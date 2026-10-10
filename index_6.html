@@ -1,0 +1,903 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Minimal Clock Wallpaper</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    :root {
+      --bg: #050607;
+      --fg: #E6E7EA;
+      --muted: #92959D;
+      --faint: rgba(255, 255, 255, 0.07);
+      --up: #5FB587;
+      --down: #C26A6A;
+      --warn: #B8A06A;
+    }
+
+    html,
+    body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+    }
+
+    /* OLED black by default. Set USE_WALLPAPER_IMAGE = true in the config to restore wallpaper.jpg */
+    body {
+      background: var(--bg);
+      font-family: "Segoe UI", "Inter", Arial, sans-serif;
+      color: rgba(255, 255, 255, 0.82);
+    }
+
+    body.bg-image {
+      background: url("wallpaper.jpg") center center / cover no-repeat;
+    }
+
+    /* Whole layout drifts a few pixels now and then (burn-in protection) */
+    #stage {
+      position: absolute;
+      inset: 0;
+      transition: transform 2.5s ease;
+    }
+
+    /* ───────── Existing clock (unchanged) ───────── */
+    .clock {
+      color: rgba(255, 255, 255, 0.74);
+      position: absolute;
+      top: 9%;
+      left: 5%;
+      text-align: left;
+      user-select: none;
+      pointer-events: none;
+      text-shadow: 0 2px 18px rgba(0, 0, 0, .35);
+    }
+
+    #time {
+      font-family: "Segoe UI Light", "Segoe UI", sans-serif;
+      font-size: clamp(48px, 5.5vw, 84px);
+      font-weight: 300;
+      letter-spacing: -3px;
+      line-height: 1;
+      opacity: .74;
+    }
+
+    #clock-main {
+      font-size: 1em;
+    }
+
+    #ampm {
+      font-family: "Segoe UI", sans-serif;
+      font-size: 0.25em;
+      font-weight: 500;
+      letter-spacing: 2px;
+      margin-left: 10px;
+      opacity: .75;
+      vertical-align: 0.45em;
+    }
+
+    #date {
+      font-family: "Segoe UI", sans-serif;
+      margin-top: 12px;
+      font-size: clamp(9px, .85vw, 13px);
+      font-weight: 400;
+      letter-spacing: 3.5px;
+      opacity: .55;
+    }
+
+    /* ───────── Dashboard ───────── */
+    .dash {
+      position: absolute;
+      left: 5%;
+      top: 34%;
+      width: clamp(400px, 30vw, 600px);
+      display: flex;
+      flex-direction: column;
+      gap: clamp(14px, 2vh, 26px);
+    }
+
+    .label {
+      font-size: clamp(9px, .62vw, 11px);
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    /* News card */
+    .news {
+      border: 1px solid var(--faint);
+      border-radius: 10px;
+      padding: clamp(16px, 1.4vw, 26px);
+      min-height: clamp(200px, 16vw, 290px);
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Dark frosted-glass surface shared by the news card and the market panel */
+    .news,
+    .panel {
+      background: rgba(5, 6, 7, 0.78);
+      -webkit-backdrop-filter: blur(22px) saturate(80%);
+      backdrop-filter: blur(22px) saturate(80%);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+    }
+
+    /* If the embedded browser lacks backdrop-filter, fall back to a more opaque dark fill */
+    @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+
+      .news,
+      .panel {
+        background: rgba(5, 6, 7, 0.94);
+      }
+    }
+
+    .panel {
+      border: 1px solid var(--faint);
+      border-radius: 10px;
+      padding: clamp(14px, 1.2vw, 22px);
+    }
+
+    .news-head,
+    .news-foot {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .news-head {
+      margin-bottom: clamp(10px, 1vw, 16px);
+    }
+
+    .news-body {
+      flex: 1;
+      transition: opacity .3s ease;
+    }
+
+    .news-body.out {
+      opacity: 0;
+    }
+
+    .headline {
+      margin: 0 0 .55em;
+      font-size: clamp(15px, 1.15vw, 20px);
+      font-weight: 500;
+      line-height: 1.3;
+      color: var(--fg);
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .summary {
+      margin: 0 0 .8em;
+      font-size: clamp(12px, .85vw, 15px);
+      line-height: 1.55;
+      color: var(--muted);
+      display: -webkit-box;
+      -webkit-line-clamp: 4;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .summary.none {
+      font-style: italic;
+      opacity: .7;
+    }
+
+    .meta {
+      font-size: clamp(10px, .7vw, 12px);
+      letter-spacing: .6px;
+      color: var(--muted);
+    }
+
+    .meta a {
+      color: var(--fg);
+      opacity: .8;
+      text-decoration: none;
+      border-bottom: 1px solid rgba(255, 255, 255, .18);
+      cursor: pointer;
+    }
+
+    .meta a:hover {
+      opacity: 1;
+    }
+
+    .news-foot {
+      margin-top: clamp(10px, 1vw, 16px);
+    }
+
+    .nav button {
+      background: none;
+      border: 0;
+      color: var(--muted);
+      font: inherit;
+      font-size: clamp(14px, 1vw, 18px);
+      line-height: 1;
+      padding: 2px 8px;
+      cursor: pointer;
+    }
+
+    .nav button:hover {
+      color: var(--fg);
+    }
+
+    #newsNote.warn {
+      color: var(--warn);
+    }
+
+    /* Markets */
+    .markets {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: clamp(16px, 2vw, 32px);
+    }
+
+    .mgroup-head {
+      display: flex;
+      justify-content: space-between;
+      padding-bottom: 6px;
+      margin-bottom: 8px;
+      border-bottom: 1px solid var(--faint);
+    }
+
+    .mrow {
+      margin-bottom: 9px;
+    }
+
+    .mline {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 8px;
+    }
+
+    .mname {
+      font-size: clamp(9px, .65vw, 11px);
+      letter-spacing: 2px;
+      color: var(--muted);
+    }
+
+    .mprice {
+      font-size: clamp(14px, 1.05vw, 18px);
+      color: var(--fg);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .mchg,
+    .mpct {
+      font-size: clamp(10px, .72vw, 12px);
+      font-variant-numeric: tabular-nums;
+      color: var(--muted);
+    }
+
+    .up {
+      color: var(--up) !important;
+    }
+
+    .down {
+      color: var(--down) !important;
+    }
+
+    .disclaimer {
+      margin-top: 4px;
+      font-size: clamp(8px, .55vw, 10px);
+      letter-spacing: 1.2px;
+      color: var(--muted);
+      opacity: .5;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div id="stage">
+
+    <!-- Existing clock -->
+    <div class="clock">
+      <div id="time">
+        <span id="clock-main">00:00</span>
+        <span id="ampm">AM</span>
+      </div>
+
+      <div id="date">SUNDAY · AUGUST 16</div>
+    </div>
+
+    <!-- News + markets -->
+    <div class="dash">
+
+      <section class="news" id="newsCard" aria-label="News">
+        <div class="news-head">
+          <span class="label">Tech &amp; AI</span>
+          <span class="label" id="newsNote"></span>
+        </div>
+
+        <div class="news-body" id="newsBody">
+          <h2 class="headline" id="nHeadline">Loading news…</h2>
+          <p class="summary" id="nSummary"></p>
+          <div class="meta" id="nMeta"></div>
+        </div>
+
+        <div class="news-foot">
+          <span class="label" id="nCount">00 / 00</span>
+          <span class="nav">
+            <button id="btnPrev" type="button" aria-label="Previous story">&#8249;</button>
+            <button id="btnNext" type="button" aria-label="Next story">&#8250;</button>
+          </span>
+        </div>
+      </section>
+
+      <div class="panel">
+        <section class="markets" id="markets" aria-label="Markets"></section>
+        <div class="disclaimer">MARKET DATA FOR INFORMATION ONLY · NOT INVESTMENT ADVICE</div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    /* ═══════════════════════════════════════════════════════════════
+       CONFIGURATION: edit this block only
+       Keys placed here are readable by anyone who can open this file.
+       Use free-tier keys and never reuse a key that matters elsewhere.
+       ═══════════════════════════════════════════════════════════════ */
+    const CONFIG = {
+      USE_WALLPAPER_IMAGE: true,           // true = use wallpaper.jpg behind everything
+
+      NEWS: {
+        PROVIDER: "currents",              // "currents" or "gnews"  (see NEWS_ADAPTERS below)
+        API_KEY: "",                       // Currents: https://currentsapi.services  |  GNews: https://gnews.io/register
+        CURRENTS_CATEGORY: "technology",   // Currents only; "" = no category filter
+        CURRENTS_KEYWORDS: "",             // Currents only; optional, e.g. "AI"
+        QUERY: 'AI OR "artificial intelligence" OR "generative AI" OR startup OR funding OR "software development" OR "open source" OR robotics',
+        LANG: "en",
+        COUNTRY: "",                       // e.g. "in" or "us"; empty = all countries
+        MAX: 10,                           // stories kept per refresh (GNews free plan caps at 10)
+        REFRESH_MIN: 20,                   // see note: 5 min would use 288 requests/day; free plan allows 100
+        ROTATE_SEC: 20,                    // card rotation (never triggers a request)
+        TIMEOUT_MS: 12000,
+        DAILY_BUDGET: 90,                  // self-imposed cap per UTC day (GNews free plan = 100)
+        DELAY_NOTE: null,                  // null = provider default; or set your own text, "" = none
+        OPEN_LINKS: true                   // false = show source only, no clickable link
+      },
+
+      MARKET: {
+        API_KEY: "",                       // Twelve Data key: https://twelvedata.com/register
+        ENDPOINT: "https://api.twelvedata.com/quote",
+        REFRESH_MIN: 5,
+        TIMEOUT_MS: 12000,
+        STALE_MIN: 30,                     // flag data older than this while a market claims to be open
+        // Edit the watchlist freely. Free plan = US-listed symbols only (stocks and ETFs).
+        // Daily credits ≈ number of symbols × 84 at a 5-minute refresh (free limit: 800/day).
+        // NSE/BSE symbols (e.g. { label: "RELIANCE", symbol: "RELIANCE", exchange: "NSE" }) need a paid plan.
+        GROUPS: [
+          {
+            id: "ADR", name: "INDIA ADRS", locale: "en-US",   // Indian companies listed in the US, priced in USD
+            tz: "America/New_York", open: [9, 30], close: [16, 0], bufferMin: 30,
+            delayLabel: "",
+            items: [
+              { label: "INFOSYS", symbol: "INFY" },
+              { label: "HDFC BANK", symbol: "HDB" },
+              { label: "ICICI BANK", symbol: "IBN" }
+            ]
+          },
+          {
+            id: "US", name: "US", locale: "en-US",
+            tz: "America/New_York", open: [9, 30], close: [16, 0], bufferMin: 30,
+            delayLabel: "",
+            items: [
+              { label: "S&P 500 · SPY", symbol: "SPY" },
+              { label: "NASDAQ · ONEQ", symbol: "ONEQ" },
+              { label: "NVIDIA", symbol: "NVDA" }
+            ]
+          }
+        ]
+      }
+    };
+
+    /* ═══════════════════ Shared helpers ═══════════════════ */
+    let livelyPaused = false;
+    const active = () => !document.hidden && !livelyPaused;
+    const $ = id => document.getElementById(id);
+
+    function clean(s) {
+      return typeof s === "string" ? s.replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim() : "";
+    }
+
+    function safeUrl(u) {
+      try {
+        const x = new URL(u);
+        return (x.protocol === "https:" || x.protocol === "http:") ? x.href : null;
+      } catch (e) { return null; }
+    }
+
+    function httpError(status, msg) {
+      const e = new Error(msg || ("HTTP " + status));
+      e.status = status;
+      return e;
+    }
+
+    async function getJSON(url, timeoutMs, headers) {
+      const ctl = new AbortController();
+      const t = setTimeout(() => ctl.abort(), timeoutMs);
+      try {
+        const res = await fetch(url, { signal: ctl.signal, cache: "no-store", headers: headers || undefined });
+        let body = null;
+        try { body = await res.json(); } catch (e) { /* non-JSON body */ }
+        if (!res.ok) {
+          const m = body && (body.errors ? [].concat(body.errors).join(" ") : body.message);
+          console.warn("[wallpaper] HTTP", res.status, url.replace(/apikey=[^&]+/, "apikey=***"), m);
+          throw httpError(res.status, m);
+        }
+        if (body === null) throw httpError(0, "Malformed JSON");
+        return body;
+      } catch (e) {
+        if (e.name === "AbortError") throw httpError(0, "Timeout");
+        if (!e.status) console.warn("[wallpaper] network/CORS failure:", url.replace(/apikey=[^&]+/, "apikey=***"), e);
+        throw e;
+      } finally {
+        clearTimeout(t);
+      }
+    }
+
+    function msToUtcMidnight() {
+      const n = new Date();
+      return Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate() + 1, 0, 1) - n.getTime();
+    }
+
+    /* ═══════════════════ Clock (original logic) ═══════════════════ */
+    const elClock = $("clock-main"), elAmpm = $("ampm"), elDate = $("date");
+    let lastClock = "", lastDay = -1;
+
+    function updateClock() {
+      const now = new Date();
+
+      // 12-hour time format
+      const hours = now.getHours();
+      const minutes = now.getMinutes();
+
+      const hour12 = hours % 12 || 12;
+      const minute = String(minutes).padStart(2, "0");
+
+      const period = hours >= 12 ? "PM" : "AM";
+
+      // Update time (only touch the DOM when the minute changes)
+      const stamp = `${hour12}:${minute}${period}`;
+      if (stamp !== lastClock) {
+        lastClock = stamp;
+        elClock.textContent = `${hour12}:${minute}`;
+        elAmpm.textContent = period;
+      }
+
+      // Update date (only when the day changes)
+      if (now.getDate() !== lastDay) {
+        lastDay = now.getDate();
+        elDate.textContent = now.toLocaleDateString([], {
+          weekday: "long",
+          month: "long",
+          day: "numeric"
+        }).toUpperCase().replace(/,/, " ·");
+      }
+    }
+
+    updateClock();
+    setInterval(() => { if (active()) updateClock(); }, 1000);
+
+    /* ═══════════════════ News ═══════════════════ */
+    const NC = CONFIG.NEWS;
+    const nBody = $("newsBody"), nHead = $("nHeadline"), nSum = $("nSummary"),
+      nMeta = $("nMeta"), nCount = $("nCount"), nNote = $("newsNote");
+
+    let stories = [], idx = 0;
+    let newsTimer = null, rotTimer = null, swapTimer = null;
+    let newsBusy = false, newsPending = false, newsFatal = false, hovering = false;
+    let budget = { day: "", n: 0 };
+
+    function setNote(text, warn) {
+      nNote.textContent = text;
+      nNote.className = "label" + (warn ? " warn" : "");
+    }
+
+    function showMessage(text) {
+      nHead.textContent = text;
+      nSum.textContent = "";
+      nMeta.textContent = "";
+      nCount.textContent = "00 / 00";
+    }
+
+    /* Provider adapters: each turns the provider's JSON into { title, url, description, content, source, published } */
+    function hostOf(u) { try { return new URL(u).hostname.replace(/^www\./, ""); } catch (e) { return ""; } }
+    function parseWhen(v) {
+      if (!v || typeof v !== "string") return null;
+      // Currents sends "2026-10-10 08:30:00 +0000"; make it ISO so every Chromium parses it
+      const m = v.match(/^(\d{4}-\d\d-\d\d) (\d\d:\d\d:\d\d) ([+-]\d\d)(\d\d)$/);
+      const d = new Date(m ? m[1] + "T" + m[2] + m[3] + ":" + m[4] : v);
+      return isNaN(d) ? null : d;
+    }
+
+    const NEWS_ADAPTERS = {
+      gnews: {
+        note: "12H DELAY · FREE PLAN",
+        url(c) {
+          const p = new URLSearchParams({
+            q: c.QUERY, lang: c.LANG, max: String(c.MAX),
+            in: "title,description", sortby: "publishedAt", apikey: c.API_KEY
+          });
+          if (c.COUNTRY) p.set("country", c.COUNTRY);
+          return "https://gnews.io/api/v4/search?" + p.toString();
+        },
+        list: d => d.articles,
+        map: a => ({
+          title: a.title, url: a.url, description: a.description, content: a.content,
+          source: a.source && a.source.name, published: a.publishedAt
+        })
+      },
+      currents: {
+        note: "",
+        url(c) {
+          const p = new URLSearchParams({ language: c.LANG });
+          if (c.CURRENTS_CATEGORY) p.set("category", c.CURRENTS_CATEGORY);
+          if (c.CURRENTS_KEYWORDS) p.set("keywords", c.CURRENTS_KEYWORDS);
+          if (c.COUNTRY) p.set("country", c.COUNTRY.toUpperCase());
+          return "https://api.currentsapi.services/v1/latest-news?" + p.toString();
+        },
+        headers: c => ({ Authorization: "Bearer " + c.API_KEY }),
+        list: d => d.news,
+        map: a => ({
+          title: a.title, url: a.url, description: a.description, content: "",
+          source: hostOf(a.url), published: a.published
+        })
+      }
+    };
+    const NA = NEWS_ADAPTERS[NC.PROVIDER] || NEWS_ADAPTERS.currents;
+    const newsNote = () => NC.DELAY_NOTE === null ? NA.note : NC.DELAY_NOTE;
+
+    function normalise(articles) {
+      const seen = new Set(), out = [];
+      for (const raw of (articles || []).slice(0, NC.MAX)) {
+        if (!raw) continue;
+        const a = NA.map(raw);
+        const title = clean(a.title), url = safeUrl(a.url);
+        if (!title || !url || seen.has(url)) continue;
+        seen.add(url);
+        let summary = clean(a.description);
+        if (!summary) summary = clean(a.content).replace(/\s*(…|\.\.\.)\s*\[\d+ chars\]\s*$/, "");
+        out.push({
+          title, url, summary,
+          source: clean(a.source),
+          date: parseWhen(a.published)
+        });
+      }
+      return out;
+    }
+
+    function fillStory(i) {
+      const s = stories[i];
+      nHead.textContent = s.title;
+      nSum.textContent = s.summary || "No summary provided by the publisher.";
+      nSum.className = "summary" + (s.summary ? "" : " none");
+
+      nMeta.textContent = "";
+      const bits = [];
+      if (s.source) bits.push(s.source);
+      if (s.date) bits.push(s.date.toLocaleString([], { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }));
+      nMeta.appendChild(document.createTextNode(bits.join("  ·  ")));
+      if (NC.OPEN_LINKS) {
+        if (bits.length) nMeta.appendChild(document.createTextNode("  ·  "));
+        const a = document.createElement("a");
+        a.href = s.url;
+        a.rel = "noopener noreferrer";
+        a.textContent = "Read original";
+        a.addEventListener("click", ev => {
+          // Lively opens plain links inside the wallpaper itself; never let that replace the dashboard.
+          ev.preventDefault();
+          window.open(s.url, "_blank", "noopener,noreferrer");
+        });
+        nMeta.appendChild(a);
+      }
+      nCount.textContent = String(i + 1).padStart(2, "0") + " / " + String(stories.length).padStart(2, "0");
+    }
+
+    function showStory(i, animate) {
+      clearTimeout(swapTimer);
+      if (!animate) { fillStory(i); return; }
+      nBody.classList.add("out");
+      swapTimer = setTimeout(() => { fillStory(i); nBody.classList.remove("out"); }, 300);
+    }
+
+    function scheduleRotate() {
+      clearTimeout(rotTimer);
+      if (stories.length > 1 && active() && !hovering) {
+        rotTimer = setTimeout(() => step(1), NC.ROTATE_SEC * 1000);
+      }
+    }
+
+    function step(d) {
+      if (!stories.length) return;
+      idx = (idx + d + stories.length) % stories.length;
+      showStory(idx, true);
+      scheduleRotate();
+    }
+
+    function scheduleNews(ms) {
+      clearTimeout(newsTimer);
+      newsTimer = setTimeout(newsTick, ms);
+    }
+
+    async function newsTick() {
+      if (newsFatal) return;
+      if (!active()) { newsPending = true; return; }
+      if (newsBusy) return;
+
+      if (!NC.API_KEY) {
+        if (!stories.length) showMessage("Add your news API key to the CONFIG block.");
+        setNote("NO API KEY", true);
+        return;
+      }
+
+      const today = new Date().toISOString().slice(0, 10);
+      if (budget.day !== today) budget = { day: today, n: 0 };
+      if (budget.n >= NC.DAILY_BUDGET) {
+        if (!stories.length) showMessage("Daily news request budget reached.");
+        setNote("BUDGET REACHED · RESUMES 00:00 UTC", true);
+        scheduleNews(msToUtcMidnight());
+        return;
+      }
+
+      newsBusy = true;
+      budget.n++;
+      let next = NC.REFRESH_MIN * 60000;
+      try {
+        const data = await getJSON(NA.url(NC), NC.TIMEOUT_MS, NA.headers ? NA.headers(NC) : null);
+        if (data && data.status === "error") throw httpError(data.code || 400, data.msg || data.message);
+        const fresh = normalise(NA.list(data));
+        if (!fresh.length) {
+          if (!stories.length) showMessage("No articles returned for this query.");
+          setNote("NO NEW ARTICLES", true);
+        } else {
+          const keep = stories[idx] ? stories[idx].url : null;
+          stories = fresh;
+          const at = keep ? stories.findIndex(s => s.url === keep) : -1;
+          idx = at >= 0 ? at : 0;
+          showStory(idx, false);
+          setNote(newsNote(), false);
+          scheduleRotate();
+        }
+      } catch (e) {
+        const st = e.status || 0;
+        let msg;
+        if (st === 401) { msg = "INVALID API KEY"; newsFatal = true; }
+        else if (st === 403) { msg = "DAILY QUOTA REACHED"; next = msToUtcMidnight(); }
+        else if (st === 429) { msg = "RATE LIMITED"; next = 10 * 60000; }
+        else if (st === 400) { msg = "BAD REQUEST · CHECK QUERY"; next = 60 * 60000; }
+        else if (st) { msg = "HTTP " + st + (e.message ? " · " + clean(e.message).slice(0, 40).toUpperCase() : ""); }
+        else { msg = e.message === "Timeout" ? "TIMED OUT" : "BLOCKED (CORS?) OR OFFLINE"; }
+        setNote(stories.length ? msg + " · SHOWING LAST FETCHED" : msg, true);
+        if (!stories.length) showMessage(
+          st === 401 ? "The news provider rejected the API key. Check it in the CONFIG block." :
+            "News unavailable right now. Will retry automatically."
+        );
+      } finally {
+        newsBusy = false;
+      }
+      if (!newsFatal) scheduleNews(next);
+    }
+
+    $("btnPrev").addEventListener("click", () => step(-1));
+    $("btnNext").addEventListener("click", () => step(1));
+    const card = $("newsCard");
+    card.addEventListener("mouseenter", () => { hovering = true; clearTimeout(rotTimer); });
+    card.addEventListener("mouseleave", () => { hovering = false; scheduleRotate(); });
+
+    /* ═══════════════════ Markets ═══════════════════ */
+    const MC = CONFIG.MARKET;
+    const mState = {};   // key -> { data, err, nextAllowed, fatal }
+    const mEls = {};     // key -> DOM refs
+    const gEls = {};     // group id -> DOM refs
+    let mktTimer = null, mktBusy = false, mktPending = false, mktFatal = false;
+
+    function buildMarkets() {
+      const root = $("markets");
+      for (const g of MC.GROUPS) {
+        const col = document.createElement("div");
+        const head = document.createElement("div");
+        head.className = "mgroup-head label";
+        const hl = document.createElement("span"), hr = document.createElement("span");
+        hl.textContent = g.name; hr.textContent = "";
+        head.append(hl, hr);
+        col.appendChild(head);
+        gEls[g.id] = { left: hl, right: hr };
+
+        for (const it of g.items) {
+          const key = g.id + ":" + it.symbol;
+          mState[key] = { data: null, err: "", nextAllowed: 0 };
+          const row = document.createElement("div"); row.className = "mrow";
+          const l1 = document.createElement("div"); l1.className = "mline";
+          const name = document.createElement("span"); name.className = "mname"; name.textContent = it.label;
+          const pct = document.createElement("span"); pct.className = "mpct"; pct.textContent = "—";
+          l1.append(name, pct);
+          const l2 = document.createElement("div"); l2.className = "mline";
+          const price = document.createElement("span"); price.className = "mprice"; price.textContent = "—";
+          const chg = document.createElement("span"); chg.className = "mchg"; chg.textContent = "";
+          l2.append(price, chg);
+          row.append(l1, l2);
+          col.appendChild(row);
+          mEls[key] = { price, chg, pct };
+        }
+        root.appendChild(col);
+      }
+    }
+
+    function windowOpen(g, now) {
+      const parts = new Intl.DateTimeFormat("en-US", {
+        timeZone: g.tz, weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false
+      }).formatToParts(now);
+      const get = t => parts.find(p => p.type === t).value;
+      const wd = get("weekday");
+      if (wd === "Sat" || wd === "Sun") return false;
+      const mins = (parseInt(get("hour"), 10) % 24) * 60 + parseInt(get("minute"), 10);
+      return mins >= g.open[0] * 60 + g.open[1] - 5 && mins <= g.close[0] * 60 + g.close[1] + g.bufferMin;
+    }
+
+    function fmtTime(ms, tz) {
+      return new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", timeZone: tz });
+    }
+
+    function renderGroup(g) {
+      const nf = new Intl.NumberFormat(g.locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const sf = new Intl.NumberFormat(g.locale, { minimumFractionDigits: 2, maximumFractionDigits: 2, signDisplay: "exceptZero" });
+      let anyOpen = false, anyKnown = false, newest = 0, fetchedAt = 0, lastDay2 = "";
+
+      for (const it of g.items) {
+        const key = g.id + ":" + it.symbol, st = mState[key], el = mEls[key], d = st.data;
+        if (!d) {
+          el.price.textContent = "—";
+          el.chg.textContent = st.err || "";
+          el.pct.textContent = "UNAVAILABLE";
+          el.pct.className = "mpct";
+          continue;
+        }
+        const dir = d.pct > 0 ? "up" : d.pct < 0 ? "down" : "";
+        el.price.textContent = nf.format(d.price);
+        el.chg.textContent = isFinite(d.chg) ? sf.format(d.chg) : "";
+        el.chg.className = "mchg " + dir;
+        el.pct.textContent = isFinite(d.pct) ? (d.pct > 0 ? "▲ " : d.pct < 0 ? "▼ " : "") + Math.abs(d.pct).toFixed(2) + "%" : "—";
+        el.pct.className = "mpct " + dir;
+        if (typeof d.open === "boolean") { anyKnown = true; if (d.open) anyOpen = true; }
+        if (d.ts > newest) newest = d.ts;
+        if (d.fetched > fetchedAt) fetchedAt = d.fetched;
+        if (d.day && d.day > lastDay2) lastDay2 = d.day;
+      }
+
+      const stale = anyOpen && newest && (Date.now() - newest > MC.STALE_MIN * 60000);
+      const status = !anyKnown ? "" : anyOpen ? (stale ? "STALE" : "OPEN") : "CLOSED";
+      const left = [g.name, status, g.delayLabel].filter(Boolean).join(" · ");
+      gEls[g.id].left.textContent = left;
+      let right = "";
+      if (anyOpen) right = fmtTime(newest || fetchedAt, undefined);          // your local time
+      else if (lastDay2) right = new Date(lastDay2 + "T12:00:00").toLocaleDateString([], { month: "short", day: "numeric" }).toUpperCase();
+      gEls[g.id].right.textContent = right;
+    }
+
+    async function fetchQuote(it) {
+      const p = new URLSearchParams({ symbol: it.symbol, apikey: MC.API_KEY });
+      if (it.exchange) p.set("exchange", it.exchange);
+      if (it.type) p.set("type", it.type);
+      const d = await getJSON(MC.ENDPOINT + "?" + p.toString(), MC.TIMEOUT_MS);
+      if (d && d.status === "error") {
+        console.warn("[wallpaper] Twelve Data error:", it.symbol, d.code, d.message);
+        throw httpError(d.code || 0, d.message);
+      }
+      const price = parseFloat(d.close), pct = parseFloat(d.percent_change), chg = parseFloat(d.change);
+      if (!isFinite(price)) throw httpError(404, "No price in response");
+      return {
+        price, pct, chg,
+        open: typeof d.is_market_open === "boolean" ? d.is_market_open : undefined,
+        ts: d.last_quote_at ? Number(d.last_quote_at) * 1000 : 0,   // last real quote time, if provided
+        day: typeof d.datetime === "string" ? d.datetime.slice(0, 10) : "",
+        fetched: Date.now()
+      };
+    }
+
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+    function scheduleMarket(ms) {
+      clearTimeout(mktTimer);
+      mktTimer = setTimeout(marketTick, ms);
+    }
+
+    async function marketTick() {
+      if (mktFatal) return;
+      if (!active()) { mktPending = true; return; }
+      if (mktBusy) return;
+      if (!MC.API_KEY) {
+        for (const k in mState) mState[k].err = "ADD API KEY";
+        MC.GROUPS.forEach(renderGroup);
+        return;
+      }
+
+      mktBusy = true;
+      const now = Date.now();
+      let calls = 0;
+      try {
+        for (const g of MC.GROUPS) {
+          const poll = windowOpen(g, new Date(now));
+          for (const it of g.items) {
+            const st = mState[g.id + ":" + it.symbol];
+            // Skip closed markets once we hold data (saves free-tier credits), and honour per-item backoff
+            if (now < st.nextAllowed) continue;
+            if (!poll && st.data) continue;
+            if (calls++) await sleep(1100);   // stay under 8 requests/min
+            try {
+              st.data = await fetchQuote(it);
+              st.err = "";
+              st.nextAllowed = 0;
+            } catch (e) {
+              const s = e.status || 0;
+              if (s === 401) { st.err = "INVALID KEY"; mktFatal = true; }
+              else if (s === 403) { st.err = "PLAN REQUIRED"; st.nextAllowed = Date.now() + 6 * 3600000; }
+              else if (s === 400 || s === 404) { st.err = "SYMBOL NOT FOUND"; st.nextAllowed = Date.now() + 6 * 3600000; }
+              else if (s === 429) { st.err = "RATE LIMITED"; st.nextAllowed = Date.now() + 10 * 60000; }
+              else { st.err = st.data ? "" : "OFFLINE"; }   // keep last good data on transient failures
+              if (s && !mktFatal && !st.data) {
+                st.err = /available starting|plan|figi/i.test(e.message || "")
+                  ? "NOT ON FREE PLAN"
+                  : ("ERR " + s + " " + clean(e.message)).slice(0, 38).toUpperCase();
+              }
+            }
+          }
+          renderGroup(g);
+        }
+      } finally {
+        mktBusy = false;
+      }
+      if (!mktFatal) scheduleMarket(MC.REFRESH_MIN * 60000);
+    }
+
+    /* ═══════════════════ Lifecycle ═══════════════════ */
+    function resume() {
+      if (!active()) return;
+      updateClock();
+      if (newsPending) { newsPending = false; scheduleNews(0); }
+      if (mktPending) { mktPending = false; scheduleMarket(0); }
+      scheduleRotate();
+    }
+
+    function suspend() { clearTimeout(rotTimer); }
+
+    document.addEventListener("visibilitychange", () => active() ? resume() : suspend());
+
+    // Lively calls this when the wallpaper is paused/resumed (fullscreen app, battery saver, etc.)
+    window.livelyWallpaperPlaybackChanged = function (data) {
+      livelyPaused = !!(data && data.IsPaused);
+      livelyPaused ? suspend() : resume();
+    };
+
+    // Small positional drift every 3 minutes to reduce burn-in risk
+    const drift = [[0, 0], [6, 3], [-4, 6], [3, -5], [-6, -2]];
+    let driftI = 0;
+    setInterval(() => {
+      if (!active()) return;
+      driftI = (driftI + 1) % drift.length;
+      $("stage").style.transform = "translate(" + drift[driftI][0] + "px," + drift[driftI][1] + "px)";
+    }, 180000);
+
+    /* ═══════════════════ Start ═══════════════════ */
+    if (CONFIG.USE_WALLPAPER_IMAGE) document.body.classList.add("bg-image");
+    buildMarkets();
+    setNote(NC.API_KEY ? newsNote() : "NO API KEY", !NC.API_KEY);
+    scheduleNews(0);
+    scheduleMarket(0);
+  </script>
+
+</body>
+
+</html>
